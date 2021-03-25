@@ -1,7 +1,7 @@
 import numpy as np
 from os import path
 from IPython import display
-from data_tmp import get_dataset
+from data import get_dataset
 from utils.figures import make_gif
 from utils.helper import read_config
 import torch

@@ -9,7 +9,7 @@ import os
 from torch.utils.tensorboard import SummaryWriter
 
 from models import pixelDDN
-from data_tmp import get_dataset
+from data import get_dataset
 from utils import helper, figures
 from utils.file_manager import pickle_save, pickle_load
 from os import path

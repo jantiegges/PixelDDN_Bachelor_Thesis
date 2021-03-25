@@ -9,7 +9,7 @@ import os
 from torch.utils.tensorboard import SummaryWriter
 
 from models import autoencoder
-from data_tmp import get_dataset
+from data import get_dataset
 from utils import helper, figures
 from os import path
 import math
