@@ -1,0 +1,41 @@
+# activation function for normal Autoencoder
+# options:
+#   tanh
+#   relu
+#   sigmoid
+#   softplus
+#   selu
+#   elu
+#   swish
+# LAE: works best with 'selu' or 'tanh'
+activation: "relu"
+
+# epochs and batch size for training
+epochs: 3
+batch_size: 16
+
+# type of loss calculation (only matters for Variational Autoencoder)
+# options:
+#   beta: https://openreview.net/forum?id=Sy2fzU9gl
+#   geco https://arxiv.org/pdf/1804.03599.pdf
+#   normal_vae: TODO: add source for losses
+loss_type: 'geco_mean'
+beta: 2
+# parameter for geco constraint
+tol: 3.3e-2
+lambd: 1.0
+alpha: 0.99
+
+# Learning rates
+ae_lr: 1.5e-4
+ddn_lr: 1.5e-4
+
+# Weigth decay
+#ae_wd: 1.e-4
+#ddn_wd: 1.e-4
+
+# max norm for clipping gradients
+#max_norm: 1.0
+
+# number of timesteps that the model should predict
+pred_steps: 7

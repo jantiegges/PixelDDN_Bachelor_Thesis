@@ -1,0 +1,70 @@
+# Define model parameters
+
+autoencoder:
+  LAE:
+    variational: False
+    convolutional: False
+    residual: False
+    encoder:
+      hidden_layers: 4
+      out_features: [256, 256, 256, 256, 256] # first + hidden
+    decoder:
+      hidden_layers: 4
+      out_features: [256, 256, 256, 256, 256] # first + hidden
+
+  CAE:
+    variational: False
+    convolutional: True
+    residual: False
+    encoder:
+      hidden_layers: 4
+      filters: [32, 64, 128, 256, 512]  # first + hidden
+      kernel_sizes: [3, 3, 3, 3, 3, 3]  # first + hidden + last
+      strides: [2, 2, 2, 2, 2, 2]  # first + hidden + last
+    decoder:
+      hidden_layers: 4
+      filters: [512, 256, 128, 64, 32]  # first + hidden
+      kernel_sizes: [3, 3, 3, 3, 3]  # hidden + last
+      strides: [2, 2, 2, 2]  # hidden
+
+  VAE:
+    variational: True
+    convolutional: False
+    residual: False
+    encoder:
+      hidden_layers: 4
+      out_features: [256, 256, 256, 256, 256] # first + hidden
+    decoder:
+      hidden_layers: 4
+      out_features: [256, 256, 256, 256, 256] # first + hidden
+
+  CVAE:
+    variational: True
+    convolutional: True
+    residual: False
+    encoder:
+      hidden_layers: 4
+      filters: [32, 64, 128, 256, 512]  # first + hidden
+      kernel_sizes: [3, 3, 3, 3, 3, 3]  # first + hidden + last
+      strides: [2, 2, 2, 2, 2, 2]  # first + hidden + last
+    decoder:
+      hidden_layers: 4
+      filters: [512, 256, 128, 64, 32]  # first + hidden
+      kernel_sizes: [3, 3, 3, 3, 3]  # hidden + last
+      strides: [2, 2, 2, 2]  # hidden
+
+dynamics:
+  MLP:
+    hidden_layers: 2
+    activation: "tanh"
+  LNN:
+    hidden_layers: 2
+    # relu doesn't work for LNN because we need to take the second derivative (Hessian)
+    activation: "relu^2"
+    integrator: "Leapfrog"
+  HNN:
+    hidden_layers: 2
+    activation: "relu"
+    integrator: "Leapfrog"
+  VIN:
+    implemented: "no"

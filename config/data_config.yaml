@@ -1,0 +1,36 @@
+# choose from the systems pendulum, double_pendulum and cartpole
+system: "pendulum"
+
+# number of dynamic parameters needed to describe the system
+# pendulum: 2
+# double_pendulum: 4
+# cartpole: 4
+latent_dim: 2
+
+# size of timestep between each rendered image (given from OpenAI Gym environment)
+# pendulum: 1/30 ~ 0.0333
+# double_pendulum: 1/15 ~ 0.0666
+# cartpole: 1/50 ~ 0.02
+delta_time: 1/30
+
+# how many times the environment should be running
+episodes: 1000
+
+# for how many timesteps each episode should the environment be running
+timesteps: 100
+
+# channels of the desired input image
+# 3 channels is rgb, 1 channel is black and white
+channels: 1
+
+# pixel size for height and width of input image
+im_size: 64
+
+# number of images in the input sequence
+seq_len: 3
+
+# numper of timesteps that the model should predict
+pred_len: 7
+
+# proportion of dataset that should be used for testing the model
+test_split: 0.2
