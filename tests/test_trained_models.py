@@ -1,3 +1,8 @@
+########
+# class that has been used for testing trained models and trying out different loss functions
+########
+
+
 import numpy as np
 import scipy.integrate
 import tqdm

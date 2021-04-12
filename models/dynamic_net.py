@@ -8,12 +8,11 @@ Models:
     MLP: Simple Linear Fully Connected Network
     LNN: Lagrangian Neural Network
     HNN: Hamiltonian Neural Network
-    VIN: Variational Integrator Network
 """
 
 
 class DDN(torch.nn.Module):
-    """ Base Model for Deep Dynamics Model
+    """ Base Model for Deep Dynamics Model (all models inherit from this one)
     Params:
         dnn_params (dict): contains model parameters for the dynamic network
         latent_dim (int): dimension of latent space
@@ -45,7 +44,6 @@ class MLP(DDN):
 
     def _build_network(self, **kwargs):
         # set dimension of hidden layers depending on size of latent space
-        # TODO: how to set hidden dim of latent network
         self.hidden_dim = self.latent_dim * 64
 
         self.linear = tnn.ModuleList([tnn.Linear(self.latent_dim, self.hidden_dim)])
@@ -55,6 +53,12 @@ class MLP(DDN):
         self.linear.append(tnn.Linear(self.hidden_dim, self.latent_dim))
 
     def forward(self, z):
+        """ takes latent state as input and outputs parameters for one step into the the future
+        Params:
+            z (Tensor) [N, latent_dim]: Tensor containing the latent state parameters
+        Returns:
+            z (Tensor) [N, latent_dim]: Tensor containing the latent state parameters for one step into the future
+        """
         for layer in self.linear:
             z = self.activation(layer(z))
         return z
@@ -74,98 +78,75 @@ class LNN(DDN):
         ])
         self.output = tnn.Linear(self.hidden_dim, 1)
 
-        # modules = []
-        #
-        # # append first and hidden layers to the list
-        # for h in range(self.hidden_layers):
-        #     modules.append(
-        #         tnn.Sequential(
-        #             tnn.BatchNorm1d(self.hidden_dim),
-        #             tnn.Linear(self.hidden_dim, self.hidden_dim)
-        #     ))
-        #
-        # self.hidden = tnn.Sequential(*modules)
-
     def lagrangian(self, q, qdot):
+        """ takes latent state parameters as input and outputs scalar value for Lagrangian
+        Params:
+            q (Tensor) [latent_dim/2]: contains latent position
+            qdot (Tensor) [latent_dim/2]: contains latent velocity
+        Returns:
+            lag (Tensor) [1]: scalar value representing the Lagrangian
+        """
+        # concatenate state parameters
         z = torch.cat(
             (q, qdot))
 
         x = self.activation(self.input(z))
 
-        #x = self.activation(self.hidden(x))
         for layer in self.hidden:
              x = self.activation(layer(x))
 
-        lagrangian = self.output(x)
+        lag = self.output(x)
 
-        return lagrangian
+        return lag
 
     def to_config_space(self, z):
-        """ splits the latent encoding in generalized coordinates
-        Args:
-            z (Tensor): latent encoding of shape (batch_size, channels, ...)
+        """ splits the latent encoding in generalised coordinates
+        Params:
+            z (Tensor) [N, latent_dim]: contains latent state parameters
         Returns:
-            q (Tensor): latent encoding of position coordinate
-            q_dot (Tensor): latent encoding of velocity coordinate
+            q (Tensor) [N, latent_dim/2]: latent encoding of position coordinate
+            q_dot (Tensor) [N, latent_dim/2]: latent encoding of velocity coordinate
         """
         q = z[:, :int(self.latent_dim / 2)]
         qdot = z[:, int(self.latent_dim / 2):]
+
         return q, qdot
 
     def forward(self, q, qdot):
         """ computes the acceleration by calculating gradients of the neural network
             which represents the lagrangian
-        Args:
-            q (Tensor (Nxq_size)): contains position parameters
-            qdot (Tensor (Nxq_size)): contains position parameters
+        Params:
+            q (Tensor) [N, latent_dim/2]: contains position parameters
+            qdot (Tensor [N, latent_dim/2]: contains position parameters
         Returns:
-            dq_ddt (Tensor (Nxq_size)): contains the approximations for the acceleration
+            dq_ddt (Tensor) [N, latent_dim/2]: contains the approximations for the acceleration
         """
-        # since autograd.functionals can't work with a whole batch at once
-        # one needs to iterate over the whole batch
 
         # init output torch
         batch_size = q.shape[0]
         q_size = q.shape[1]
         dq_ddt = torch.empty(batch_size, q_size)
 
-        # compute over whole batch
+        # since autograd.functionals can't work with a whole batch at once
+        # one needs to iterate over the whole batch
 
-        # compute hessian an and jacobian of Lagrange Function with respect to input
-        # hess = tgrad.functional.hessian(self.lagrangian, (q, qdot))
-        # jac = tgrad.functional.jacobian(self.lagrangian, (q, qdot))
-        #
-        # # calculating the acceleration according to a transformed Euler-Lagrange Equation
-        # first_term = torch.pinverse(hess[1][1])
-        # sec_term = jac[0][0]
-        # third_term = hess[0][1]
-        #
-        # dq_ddt_b = first_term * (sec_term - third_term)
-
-        # iterate over batch
         for b in range(batch_size):
             q_tmp = q[b]
             qdot_tmp = qdot[b]
 
             # compute hessian an and jacobian of Lagrange Function with respect to input
-            hess = tgrad.functional.hessian(self.lagrangian, (q_tmp, qdot_tmp))
-            jac = tgrad.functional.jacobian(self.lagrangian, (q_tmp, qdot_tmp))
+            hess = tgrad.functional.hessian(self.lagrangian, (q_tmp, qdot_tmp), create_graph=True)
+            jac = tgrad.functional.jacobian(self.lagrangian, (q_tmp, qdot_tmp), create_graph=True)
 
             # calculating the acceleration according to a transformed Euler-Lagrange Equation
             hess_qdot = hess[1][1]
             hess_qqdot = hess[0][1]
             grad_q = jac[0].permute(1, 0)
 
-            hess_inv = torch.pinverse(hess_qdot)
+            hess_inv = torch.linalg.pinv(hess_qdot)
             third_term = torch.matmul(hess_qqdot, qdot_tmp.unsqueeze(-1))
             brackets = torch.sub(grad_q, third_term)
             dq_ddt[b] = (torch.matmul(hess_inv, brackets)).squeeze(1)
-
-            # first_term = torch.pinverse(hess[1][1])
-            # sec_term = jac[0][0]
-            # third_term = hess[0][1]
-            #
-            # dq_ddt[b] = first_term * (sec_term - third_term)
 
         return dq_ddt
 
@@ -186,11 +167,11 @@ class HNN(DDN):
 
     def to_phase_space(self, z):
         """ splits the latent encoding in canonical coordinates
-        Args:
-            z (Tensor): latent encoding of shape (batch_size, channels, ...)
+        Params:
+            z (Tensor) [N, latent_dim]: contains latent state parameters
         Returns:
-            q (Tensor): latent encoding of position coordinate
-            p (Tensor): latent encoding of momentum coordinate
+            q (Tensor) [N, latent_dim/2]: latent encoding of position coordinate
+            p (Tensor) [N, latent_dim/2]: latent encoding of momentum coordinate
         """
         q = z[:, :int(self.latent_dim / 2)]
         p = z[:, int(self.latent_dim / 2):]
@@ -198,11 +179,11 @@ class HNN(DDN):
 
     def forward(self, q, p):
         """ computes the Hamiltonian from position and momentum input
-        Args:
-            q (Tensor (Nxq_size)): contains position parameters
-            p (Tensor (Nxq_size)): contains momentum parameters
+        Params:
+            q (Tensor) [N, latent_dim/2]: contains latent position
+            p (Tensor) [N, latent_dim/2]: contains latent momentum
         Returns:
-              ham (tensor Nx1): Hamiltonian representing the total energy of the system
+            ham (Tensor) [N, 1]: scalar value representing the Hamiltonian
         """
         z = torch.cat(
             (q, p),
@@ -216,6 +197,14 @@ class HNN(DDN):
 
 class VIN(DDN):
     """ Variational Integrator Network """
-
+    # TODO: implement Variational Integrator Network for comparison
+    # @inproceedings{saemundsson2020variational,
+    #   title={Variational integrator networks for physically structured embeddings},
+    #   author={Saemundsson, Steindor and Terenin, Alexander and Hofmann, Katja and Deisenroth, Marc},
+    #   booktitle={International Conference on Artificial Intelligence and Statistics},
+    #   pages={3078--3087},
+    #   year={2020},
+    #   organization={PMLR}
+    # }
     def _build_network(self):
         raise NotImplementedError

@@ -1,13 +1,14 @@
-# activation function for normal Autoencoder
+# activation function for normal Autoencoder (Convolutional is LeakyRelu and can't eb varied)
 # options:
 #   tanh
 #   relu
+#   relu^2
 #   sigmoid
 #   softplus
 #   selu
 #   elu
+#   gelu
 #   swish
-# LAE: works best with 'selu' or 'tanh'
 activation: "relu"
 
 # epochs and batch size for training
@@ -16,13 +17,16 @@ batch_size: 16
 
 # type of loss calculation (only matters for Variational Autoencoder)
 # options:
-#   beta: https://openreview.net/forum?id=Sy2fzU9gl
-#   geco https://arxiv.org/pdf/1804.03599.pdf
-#   normal_vae: TODO: add source for losses
+#   normal: normale ELBO
+#   beta: https://openreview.net/references/pdf?id=Sy2fzU9gl
+#   geco: https://arxiv.org/pdf/1810.00597.pdf
+#
+# additionally one has to choose between mean and sum reduction (example: geco_mean)
 loss_type: 'geco_mean'
 beta: 2
+
 # parameter for geco constraint
-tol: 3.3e-2
+tol: 1.0e-2
 lambd: 1.0
 alpha: 0.99
 
@@ -31,10 +35,12 @@ ae_lr: 1.5e-4
 ddn_lr: 1.5e-4
 
 # Weigth decay
+# not used in final model
 #ae_wd: 1.e-4
 #ddn_wd: 1.e-4
 
 # max norm for clipping gradients
+# not used in final model
 #max_norm: 1.0
 
 # number of timesteps that the model should predict

@@ -3,8 +3,10 @@ import gym
 from PIL import Image
 from utils.file_manager import pickle_load, pickle_save
 
+# file for generating the dataset for training and testing
+
 def get_dataset(data_params, system_name, save_dir, filename, seed):
-    ''' Returns a dateset build on an OpenAI Gym environment. Checks for saved one first,
+    """ Returns a dateset build on an OpenAI Gym environment. Checks for saved one first,
     otherwise constructs one
     Params:
         data_params (dict): dictionary with all parameters for the data generation
@@ -12,7 +14,7 @@ def get_dataset(data_params, system_name, save_dir, filename, seed):
         save_dir (str): path where to save saved_data
     Return:
         saved_data (dict): dataset with train and test saved_data
-    '''
+    """
     if system_name == "pendulum":
         env_name = "Pendulum-v0"
     elif system_name == "double_pendulum":
@@ -57,7 +59,7 @@ def create_dataset(data_params, env_name, seed, episodes, test_split):
         seed (int): seed for reproducing results
         episodes (int): number of episodes to run the environment
         test_split (float): percentage number of the test split saved_data
-    Return:
+    Returns:
         train_data [ep x ts x seq_len+1 x H x W x channels]: last image of sequence is target image
         test_data [ep x ts x seq_len+1 x H x W x channels]: last image of sequence is target image
         train_meta_data/test_meta_data(dict):
@@ -136,9 +138,7 @@ def create_dataset(data_params, env_name, seed, episodes, test_split):
     test_gcoords_in, test_gcoords_out = gen_coords_in[test_idx:], gen_coords_out[test_idx:]
     test_applied_force = applied_force[test_idx:]
 
-    # TODO: save frames for training in training data set and other data in meta dataset
     # save lists in saved_data structure
-    # TODO: is episodes number set right?
 
     train_meta_data = {'ccoords_in': train_ccoords_in, 'ccoords_out': train_ccoords_out,
                        'gcoords_in': train_gcoords_in, 'gcoords_out': train_gcoords_out,
@@ -149,8 +149,6 @@ def create_dataset(data_params, env_name, seed, episodes, test_split):
                       'gcoords_in': test_gcoords_in, 'gcoords_out': test_gcoords_out,
                       'applied_force': test_applied_force, 'episodes': episodes - test_idx,
                       'timesteps': timesteps-seq_len}
-
-    # TODO: maybe adjust gym settings?
 
     return train_data, test_data, train_meta_data, test_meta_data, gym_settings
 
@@ -163,8 +161,8 @@ def run_system(data_params, env_name, seed, episodes, timesteps, im_size, seq_le
         timesteps (int): number of action steps in environment before terminating
         episodes (int): number of episodes to run the environment
         im_size (int): desired size of the input image
-        seq_len (int): TODO: describe seq_len and im_size
-        channels (int):
+        seq_len (int): number of images in input sequence
+        channels (int): number of channels of the input images (RGB: 3, BW: 1)
     Return:
         frames ([#frames, pixel]]: consecutive array of the pixel frames
         canonical_coords ([#frames, coords]): consecutive array of can. coords for each frame
@@ -223,7 +221,7 @@ def run_system(data_params, env_name, seed, episodes, timesteps, im_size, seq_le
 def preproc(img, im_size, channels, env_name):
     """ turns gray, crops and resize the rgb pendulum observation
     Params:
-        Img ([int]): rgb array of pendulum observation image
+        Img (array[int]): rgb array of pendulum observation image
         im_size (int): size of desired image size
         env_name (str): name of environment
     Return:
@@ -273,10 +271,10 @@ def preproc(img, im_size, channels, env_name):
 def get_generalized_coords(state, env_name):
     """ function for getting generalized coordinates from state coordinates
     Params:
-        state ([float]): state coordinates
+        state (array[float]): state coordinates
         env_name (str): name of OpenAI environment
     Return:
-        canonical_coords ([float]): array with canonical coordinates (position and velocity)
+        canonical_coords (array[float]): array with canonical coordinates (position and velocity)
     """
     if env_name == "Pendulum-v0":
         theta = np.arccos(state[0])
@@ -319,10 +317,10 @@ def get_generalized_coords(state, env_name):
 def get_canonical_coords(state, env_name):
     """ function for getting canonical coordinates from state coordinates
     Params:
-        state ([float]): state coordinates
+        state (array[float]): state coordinates
         env_name (str): name of OpenAI environment
     Return:
-        canonical_coords ([float]): array with canonical coordinates (position and momentum)
+        canonical_coords (array[float]): array with canonical coordinates (position and momentum)
     """
     if env_name == "Pendulum-v0":
         # information from https://github.com/openai/gym/blob/master/gym/envs/classic_control/pendulum.py
@@ -330,7 +328,6 @@ def get_canonical_coords(state, env_name):
         theta = np.arccos(state[0])
         theta_dot = state[2]
 
-        # TODO: why do they multiply a constant of 0.25 to theta_dot?
         # compute momentum: p = m*v
         q = theta
         p = mass * theta_dot

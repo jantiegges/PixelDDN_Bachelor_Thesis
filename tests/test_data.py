@@ -1,3 +1,8 @@
+########
+# class that has been used for testing the data generation
+########
+
+
 import numpy as np
 from os import path
 from IPython import display

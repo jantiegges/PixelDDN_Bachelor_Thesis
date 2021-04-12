@@ -1,3 +1,5 @@
+# configuration file for the construction of the data set
+
 # choose from the systems pendulum, double_pendulum and cartpole
 system: "pendulum"
 

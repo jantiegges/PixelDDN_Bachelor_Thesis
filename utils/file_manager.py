@@ -2,25 +2,26 @@ import pickle
 from models import pixelDDN
 import torch
 
+# class for saving and loading data sets as well as the model parameters of trained models
+
 def pickle_save(data, path):
-    ''' saves saved_data to path in .pkl format
+    """ saves data to path in .pkl format
     Params:
-        saved_data: saved_data to save
-        path (str): path for saving
-    '''
+        saved_data (dict): data to save
+        path (string): path for saving
+    """
     # write pickle representation of saved_data to file
     # write in highest protocol version --> best speed up
     with open(path, 'wb') as file:
         pickle.dump(data, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 def pickle_load(path):
-    ''' load a .pkl file from path
+    """ loads a .pkl file from path
     Params:
         path (str): path of file
     Return:
-        saved_data (obj): reconstituted object
-        '''
-    data = None
+        data (dict): reconstituted object
+    """
     # open in binary format for reading
     with open(path, 'rb') as file:
         data = pickle.load(file)
@@ -29,8 +30,8 @@ def pickle_load(path):
 def load_model(modelname, data_config, PATH):
     """ loads the specified model
     Params:
-        modelname (str): contains name of the model
-        path (str): path to the models parameters
+        modelname (string): contains name of the model
+        path (string): path to the models parameters
     Returns:
         model (pixelDDN object): model
     """
@@ -58,4 +59,3 @@ def load_model(modelname, data_config, PATH):
     model.load_state_dict(torch.load(path))
 
     return model
-

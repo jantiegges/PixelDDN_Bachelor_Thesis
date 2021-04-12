@@ -1,8 +1,5 @@
 import numpy as np
-import scipy.integrate
 import tqdm
-
-solve_ivp = scipy.integrate.solve_ivp
 
 import torch, argparse
 import os
@@ -28,13 +25,13 @@ class PixelDDNTrainer:
     def __init__(self, ae_model, ddn_model, ae_config, ddn_config, train_config, data_config, args):
         """
         Params:
-             ae_model:
-             ddn_model:
-             ae_config:
-             ddn_config:
-             train_config:
-             data_config:
-             args:
+             ae_model (string): name of autoencoder model
+             ddn_model (string): name of dynamic network model
+             ae_config (dict): model parameters for autoencoder
+             ddn_config (dict): model parameters for dynamic network
+             train_config (dict): hyperparameters for training process
+             data_config (dict): properties of dataset
+             args: other arguments given
         """
         self.ae_model = ae_model
         self.ddn_model = ddn_model
@@ -103,9 +100,7 @@ class PixelDDNTrainer:
             },
         ]
 
-        # TODO: what about weight decay
         self.optimizer = torch.optim.Adam(optim_params)
-        #self.optimizer = torch.optim.Adam(list(self.model.parameters()), self.train_params["ae_lr"])
 
         self.train_log = []
         self.test_log = []
@@ -115,6 +110,11 @@ class PixelDDNTrainer:
         Params:
             pred (dict): contains model output defined in model_output class
             target (Tensor) (N x time_steps x channels x H x W): contains target image(s)
+        Returns:
+            loss (float): loss of model
+            optional:
+                reconstruction_error (float): loss from reconstructing the images
+                KLD (float): Kullback-Leibler divergence
         """
         
         # differentiate between variational and non-variational autoencoder
@@ -128,31 +128,22 @@ class PixelDDNTrainer:
                 kld_loss = torch.mean(-0.5 * torch.sum(1 + pred.z_logvar - pred.z_mean.pow(2) - pred.z_logvar.exp(), dim=1), dim=0)
 
                 if self.loss_type == 'beta_mean':
-                    # normalise
-                    # source: https://stats.stackexchange.com/questions/332179/how-to-weight-kld-loss-vs-reconstruction-loss-in-variational-auto-encoder
-                    beta_norm = (self.beta * args.latent_dim) / data_size
-                    kld_loss = kld_loss * beta_norm
-                    loss = reconstruction_error + kld_loss
+                    # normalise kld
+                    kld_loss = kld_loss / data_size
+                    loss = reconstruction_error + (self.beta * kld_loss)
                 elif self.loss_type == 'geco_mean':
-
+                    # normalise kld
                     kld_loss = kld_loss / data_size
                     # compute geco contraint
                     geco_constraint = reconstruction_error - self.tol**2
                     loss = self.lambd * geco_constraint + kld_loss
 
-                    # update lagrange multiplier with respect to geco constraint
+                    # update geco constraint
                     with torch.no_grad():
                         if self.gc_ma is None:
                             self.gc_ma = geco_constraint
                         else:
                             self.gc_ma = self.alpha * self.gc_ma + (1 - self.alpha) * geco_constraint
-
-                        self.lambd *= torch.exp(self.gc_ma.detach())
-                        # clamp lambda to avoid infinite values
-                        self.lambd = torch.clamp(self.lambd, 1e-10, 1e10)
-                        # cast lambda back to float
-                        self.lambd = self.lambd.item()
-
 
                 elif self.loss_type == 'normal_mean':
                     kld_loss = kld_loss / data_size
@@ -167,20 +158,21 @@ class PixelDDNTrainer:
 
                 if self.loss_type == 'beta_sum':
                     # normalise
-                    # source: https://stats.stackexchange.com/questions/332179/how-to-weight-kld-loss-vs-reconstruction-loss-in-variational-auto-encoder
-                    beta_norm = (self.beta * args.latent_dim) / data_size
-                    kld_loss = kld_loss * beta_norm
-                    loss = reconstruction_error + kld_loss
-                elif self.loss_type == 'const_beta_sum':
-                    # clamp the constraint to avoid infinite values
-                    # C = torch.clamp(self.C_max/self.C_stop_iter * self.num_iter,  1e-10, 1e10)
-                    # loss = reconstruction_error + self.gamma * (kld_loss - C).abs()
+                    #kld_loss = kld_loss / data_size
+                    loss = reconstruction_error + (self.beta * kld_loss)
+                elif self.loss_type == 'geco_sum':
+                    # compute geco contraint
+                    geco_constraint = reconstruction_error - self.tol**2
+                    loss = self.lambd * geco_constraint + kld_loss
 
-                    # C = torch.clamp(self.C_max/self.C_stop_iter*self.global_iter, 0, self.C_max.data[0])
-                    # beta_vae_loss = recon_loss + self.gamma*(total_kld-C).abs()
-                    raise NotImplementedError
+                    # update geco constraint
+                    with torch.no_grad():
+                        if self.gc_ma is None:
+                            self.gc_ma = geco_constraint
+                        else:
+                            self.gc_ma = self.alpha * self.gc_ma + (1 - self.alpha) * geco_constraint
                 elif self.loss_type == 'normal_sum':
-                    kld_loss = kld_loss / data_size
+                    #kld_loss = kld_loss / data_size
                     loss = reconstruction_error + kld_loss
                 else:
                     raise NotImplementedError
@@ -192,7 +184,7 @@ class PixelDDNTrainer:
             return {'Total Loss': loss}
 
     def fit(self):
-        """ trains the model """
+        """ implements whole training process for the model """
         # set random seed
         torch.manual_seed(args.seed)
         np.random.seed(args.seed)
@@ -228,7 +220,6 @@ class PixelDDNTrainer:
                 # alternatively one could also include the reconstruction
                 # of the last input image: target = batch[:, -(self.pred_steps-1):, ...]
                 target = batch[:, (seq_len-1):(seq_len + self.pred_steps), ...]
-                #target = batch[:, -self.pred_steps:, ...]
 
                 # forward input through model
                 prediction = self.model(input, self.pred_steps, variational=self.var, convolutional=self.conv)
@@ -246,7 +237,16 @@ class PixelDDNTrainer:
                 # perform gradient descent
                 self.optimizer.step()
 
+                # every 100 steps update lambda and log loss
                 if i % 100 == 99:
+
+                    if 'geco' in self.loss_type and self.var:
+                        # update lambda
+                        self.lambd *= torch.exp(self.gc_ma.detach())
+                        # clamp lambda to avoid infinite values
+                        self.lambd = torch.clamp(self.lambd, 1e-10, 1e10)
+                        # cast lambda back to float
+                        self.lambd = self.lambd.item()
 
                     # normalise loss for logging for variational autoencoder with sum reduction
                     if 'sum' in self.loss_type:
@@ -266,7 +266,7 @@ class PixelDDNTrainer:
                     plt_pred = prediction.reconstruction[0,-self.pred_steps:,...]
 
                     self.writer.add_figure("prediction vs. target",
-                                           figures.plot_pred_vs_target(plt_input, plt_target, plt_pred),
+                                           figures.plot_pred_vs_target(plt_input, plt_target, plt_pred, im_size),
                                            epoch * len(self.trainloader) + i)
 
                     print('Train Epoch: {} [{}/{} ({:.0f}%)]\t'.format(
@@ -274,7 +274,6 @@ class PixelDDNTrainer:
                                100. * i / len(self.trainloader)), end='')
 
                     print(", ".join([f"{k}: {v:.3e}" for k, v in losses.items()]))
-
 
             # update epoch progress bar
             print("\n")
@@ -295,12 +294,13 @@ class PixelDDNTrainer:
         PATH = f"{MODEL_DIR}/{self.ddn_model}_{self.ae_model}/{self.ddn_model}_{self.ae_model}"
         torch.save(self.model.state_dict(), PATH)
 
-
         self.test(PATH)
 
-
     def test(self, PATH):
-
+        """ tests a trained model
+        Params:
+            PATH: path of model to test
+        """
         # load saved model parameters
         self.model.load_state_dict(torch.load(PATH))
 
@@ -331,7 +331,6 @@ class PixelDDNTrainer:
             # alternatively one could also include the reconstruction
             # of the last input image: target = batch[:, -(self.pred_steps-1):, ...]
             target = batch[:, (seq_len - 1):(seq_len + self.pred_steps), ...]
-            #target = batch[:, -self.pred_steps, ...]
 
             # forward input through model
             prediction = self.model(input, self.pred_steps, variational=self.var, convolutional=self.conv)
@@ -357,7 +356,7 @@ class PixelDDNTrainer:
                 plt_target = target[0, -self.pred_steps:, ...]
                 plt_pred = prediction.reconstruction[0, -self.pred_steps:, ...]
                 self.writer.add_figure("prediction vs. target",
-                                       figures.plot_pred_vs_target(plt_input, plt_target, plt_pred),
+                                       figures.plot_pred_vs_target(plt_input, plt_target, plt_pred, im_size),
                                        len(self.testloader) + i)
 
                 print('[{}/{} ({:.0f}%)]\t'.format(
@@ -383,22 +382,6 @@ def get_args():
     parser.add_argument("--seed", default=32, type=int, help="random seed")
     parser.set_defaults(feature=True)
     return parser.parse_args()
-
-
-def ask_confirmation(config, ae_model):
-    """ prints out model parameters on console and waits for confirmation """
-
-    print("The training will be run with the following configuration:")
-    # copy and pop parameters for networks
-    config_print = copy.deepcopy(config)
-    params = config_print['autoencoder'].pop(ae_model)
-    # prints unsorted dictionary with indentation = 4
-    pprint.pp(params, indent=4)
-    print("Proceed? (y/n):")
-    if input() != 'y':
-        print("Abort.")
-        exit()
-
 
 if __name__ == "__main__":
 
@@ -431,9 +414,9 @@ if __name__ == "__main__":
         # construct data_file
         args.data_file = f"{system}_{ep}_{ts}_{im_size}_{seq_len}_{channels}"
 
-
     trainer = PixelDDNTrainer(ae_model, ddn_model, ae_config, ddn_config, train_config, data_config, args)
 
+    # trains and tests or just tests the model
     if args.train_flag:
         trainer.fit()
     else:

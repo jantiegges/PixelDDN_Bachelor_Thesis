@@ -7,10 +7,10 @@ autoencoder:
     residual: False
     encoder:
       hidden_layers: 4
-      out_features: [256, 256, 256, 256, 256] # first + hidden
+      out_features: [256, 256, 256, 256, 256] # first + hidden layer
     decoder:
       hidden_layers: 4
-      out_features: [256, 256, 256, 256, 256] # first + hidden
+      out_features: [256, 256, 256, 256, 256] # first + hidden layer
 
   CAE:
     variational: False
@@ -18,14 +18,14 @@ autoencoder:
     residual: False
     encoder:
       hidden_layers: 4
-      filters: [32, 64, 128, 256, 512]  # first + hidden
-      kernel_sizes: [3, 3, 3, 3, 3, 3]  # first + hidden + last
-      strides: [2, 2, 2, 2, 2, 2]  # first + hidden + last
+      filters: [32, 64, 128, 256, 512]  # first + hidden layer
+      kernel_sizes: [3, 3, 3, 3, 3, 3]  # first + hidden + last layer
+      strides: [2, 2, 2, 2, 2, 2]  # first + hidden + last layer
     decoder:
       hidden_layers: 4
-      filters: [512, 256, 128, 64, 32]  # first + hidden
-      kernel_sizes: [3, 3, 3, 3, 3]  # hidden + last
-      strides: [2, 2, 2, 2]  # hidden
+      filters: [512, 256, 128, 64, 32]  # first + hidden layer
+      kernel_sizes: [3, 3, 3, 3, 3]  # hidden + last layer
+      strides: [2, 2, 2, 2]  # hidden layer
 
   VAE:
     variational: True
@@ -33,10 +33,10 @@ autoencoder:
     residual: False
     encoder:
       hidden_layers: 4
-      out_features: [256, 256, 256, 256, 256] # first + hidden
+      out_features: [256, 256, 256, 256, 256] # first + hidden layer
     decoder:
       hidden_layers: 4
-      out_features: [256, 256, 256, 256, 256] # first + hidden
+      out_features: [256, 256, 256, 256, 256] # first + hidden layer
 
   CVAE:
     variational: True
@@ -44,23 +44,35 @@ autoencoder:
     residual: False
     encoder:
       hidden_layers: 4
-      filters: [32, 64, 128, 256, 512]  # first + hidden
-      kernel_sizes: [3, 3, 3, 3, 3, 3]  # first + hidden + last
-      strides: [2, 2, 2, 2, 2, 2]  # first + hidden + last
+      filters: [32, 64, 128, 256, 512]  # first + hidden layer
+      kernel_sizes: [3, 3, 3, 3, 3, 3]  # first + hidden + last layer
+      strides: [2, 2, 2, 2, 2, 2]  # first + hidden + last layer
     decoder:
       hidden_layers: 4
-      filters: [512, 256, 128, 64, 32]  # first + hidden
-      kernel_sizes: [3, 3, 3, 3, 3]  # hidden + last
-      strides: [2, 2, 2, 2]  # hidden
+      filters: [512, 256, 128, 64, 32]  # first + hidden layer
+      kernel_sizes: [3, 3, 3, 3, 3]  # hidden + last layer
+      strides: [2, 2, 2, 2]  # hidden layer
+
+
+# activation function options:
+#   tanh
+#   relu
+#   relu^2
+#   sigmoid
+#   softplus
+#   selu
+#   elu
+#   gelu
+#   swish
 
 dynamics:
   MLP:
     hidden_layers: 2
-    activation: "tanh"
+    activation: "relu"
   LNN:
     hidden_layers: 2
-    # relu doesn't work for LNN because we need to take the second derivative (Hessian)
-    activation: "relu^2"
+    # only activation function which have a nonzero second derivative can be used (not relu)
+    activation: "softplus"
     integrator: "Leapfrog"
   HNN:
     hidden_layers: 2

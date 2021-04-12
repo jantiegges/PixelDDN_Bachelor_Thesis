@@ -14,11 +14,12 @@ class PixelDDN(torch.nn.Module):
 
     def __init__(self, ae_model, ddn_model, ae_params, ddn_params, data_params, latent_dim):
         """
-        autoencoder: autoencoder network
-        dynamics: dynamic network
-        integrator: TODO
-        channels (int): number of channels of the input images (RGB: 3, BW: 1)
-        seq_len (int): number of images in one sequence
+        ae_model (string): name of autoencoder model
+        ddn_model (string): name of dynamic network model
+        ae_params (dict): model parameters for autoencoder
+        ddn_params (dict): model parameters for dynamic network
+        data_params (dict): properties of data set
+        latent_dim (int): size of latent space
         """
         # init params
         super().__init__()
@@ -33,17 +34,18 @@ class PixelDDN(torch.nn.Module):
         self.seq_len = data_params['seq_len']
         self.im_size = data_params['im_size']
         self.delta_t = data_params['delta_time']
+        self.latent_dim = latent_dim
+
+        # init time step for integration
         if isinstance(self.delta_t, str):
             num, denom = self.delta_t.split('/')
             self.delta_t = float(num) / float(denom)
-        self.latent_dim = latent_dim
 
-        # init integrator 
+        # init integrator (only for LNN and HNN)
         if ddn_model != "MLP":
             self.integrator = integrator.Integrator(method=ddn_params['integrator'], delta_t=self.delta_t)
 
-
-        # init models
+        # init autoencoder
         if ae_model == "LAE":
             self.ae = autoencoder.LAE(self.en_params,
                                       self.de_params,
@@ -73,6 +75,7 @@ class PixelDDN(torch.nn.Module):
                                        self.im_size,
                                        latent_dim)
 
+        # init dynamic network
         if ddn_model == "MLP":
             self.ddn = dynamic_net.MLP(ddn_params, latent_dim)
         if ddn_model == "LNN":
@@ -82,48 +85,45 @@ class PixelDDN(torch.nn.Module):
         if ddn_model == "VIN":
             raise NotImplementedError
 
-
-
     def forward(self, rollout_batch, pred_steps=1, variational=True):
         """ sets forward pass and return prediction from pixel input """
-        raise NotImplementedError
-
-    def load(self):
-        """ load network parameters """
-        raise NotImplementedError
-
-    def save(self):
-        """ save network parameters"""
         raise NotImplementedError
 
 
 class PixelLNN(PixelDDN):
     """ Pixel Lagrangian Neural Network """
 
-    def forward(self, rollout_batch, pred_steps=1, variational=True, convolutional=True):
-        """ sets forward pass and return prediction from pixel input """
+    def forward(self, input_seq, pred_steps=1, variational=True, convolutional=True):
+        """ sets forward pass and return prediction from pixel input using a Lagrangian Neural Network
+        Params:
+            input_seq (Tensor) [batch_size, seq_len, channels, height, width]: sequence of input images
+            pred_steps (int): number of timesteps to predict in the future
+            variational (bool): whether the autoencoder is variational
+            convolutional (bool): whether the autoencoder is convolutional
+        """
         # init prediction object
-        pred_shape = list(rollout_batch.shape)
+        pred_shape = list(input_seq.shape)
         # length of guessed sequence plus the first one
         pred_shape[1] = pred_steps + 1
         pred = ModelOutput(batch_shape=torch.Size(pred_shape))
-        pred.set_input(rollout_batch)
+        pred.set_input(input_seq)
 
         # concat along channel dimension
-        b, s, c, h, w = rollout_batch.size()
+        b, s, c, h, w = input_seq.size()
 
+        # reshape input to match autoencoder input layer
         if convolutional:
-            rollout_batch = rollout_batch.reshape(b, s * c, h, w)
+            input_seq = input_seq.reshape(b, s * c, h, w)
         else:
-            rollout_batch = rollout_batch.reshape(b, s * c * h * w)
+            input_seq = input_seq.reshape(b, s * c * h * w)
 
         # get and save latent distribution
         if variational:
-                z_mean, z_logvar = self.ae.encode(rollout_batch)
+                z_mean, z_logvar = self.ae.encode(input_seq)
                 z = self.ae.reparameterize(z_mean, z_logvar)
                 pred.set_latent(z, z_mean, z_logvar)
         else:
-                z = self.ae.encode(rollout_batch)
+                z = self.ae.encode(input_seq)
                 pred.set_latent(z)
 
         # initial state
@@ -138,11 +138,13 @@ class PixelLNN(PixelDDN):
             x_reconstructed = x_reconstructed.reshape([-1, self.channels, self.im_size, self.im_size])
             pred.append_reconstruction(x_reconstructed)
 
-        # estimate predictions
+        # for loop predicting future time steps
         for t in range(pred_steps):
             # compute next state
-            q, qdot = self.integrator.step(x1=q, x2=qdot, ddn=self.ddn, hamiltonian=False)
+            q, qdot, qddot = self.integrator.step(x1=q, x2=qdot, ddn=self.ddn, hamiltonian=False)
             pred.append_state(x1=q, x2=qdot, lagrangian=True)
+            # append acceleration
+            pred.append_acc(qddot)
             # append Lagrangian
             pred.append_energy(self.integrator.energy)
 
@@ -154,8 +156,8 @@ class PixelLNN(PixelDDN):
                 x_reconstructed = x_reconstructed.reshape([-1, self.channels, self.im_size, self.im_size])
                 pred.append_reconstruction(x_reconstructed)
 
-
-        # since lagrangian is always computed for timestep in the past, it needs to be computed one more time
+        # since lagrangian and acceleration is always computed for time step in the past, it needs to be computed one
+        # more time
         with torch.no_grad():
             batch_size = q.shape[0]
             q_size = q.shape[1]
@@ -168,7 +170,9 @@ class PixelLNN(PixelDDN):
 
             last_energy = last_energy_tmp.detach().cpu().numpy()
 
+        last_qddot = self.ddn(q, qdot)
         pred.append_energy(last_energy)
+        pred.append_acc(last_qddot)
 
         return pred
 
@@ -176,36 +180,38 @@ class PixelLNN(PixelDDN):
 class PixelHNN(PixelDDN):
     """ Pixel Hamiltonian Neural Network """
 
-    def forward(self, rollout_batch, pred_steps=1, variational=True, convolutional=True):
-        """ sets forward pass and return prediction from pixel input
+    def forward(self, input_seq, pred_steps=1, variational=True, convolutional=True):
+        """ sets forward pass and return prediction from pixel input using a Hamiltonian Neural Network
         Params:
-            rollout_batch (tensor N): tensor which contains the batch
-            time_steps (int): number of guessed time steps
-            variational (bool): whether the autoencoder is variational or not
+            input_seq (Tensor) [batch_size, seq_len, channels, height, width]: sequence of input images
+            pred_steps (int): number of time steps to predict in the future
+            variational (bool): whether the autoencoder is variational
+            convolutional (bool): whether the autoencoder is convolutional
         """
 
         # init prediction object
-        pred_shape = list(rollout_batch.shape)
+        pred_shape = list(input_seq.shape)
         # length of guessed sequence plus the first one
         pred_shape[1] = pred_steps + 1
         pred = ModelOutput(batch_shape=torch.Size(pred_shape))
-        pred.set_input(rollout_batch)
+        pred.set_input(input_seq)
 
         # concat along channel dimension
-        b, s, c, h, w = rollout_batch.size()
+        b, s, c, h, w = input_seq.size()
 
+        # reshape input to match autoencoder input layer
         if convolutional:
-            rollout_batch = rollout_batch.reshape(b, s * c, h, w)
+            input_seq = input_seq.reshape(b, s * c, h, w)
         else:
-            rollout_batch = rollout_batch.reshape(b, s * c * h * w)
+            input_seq = input_seq.reshape(b, s * c * h * w)
 
         # get and save latent distribution
         if variational:
-                z_mean, z_logvar = self.ae.encode(rollout_batch)
+                z_mean, z_logvar = self.ae.encode(input_seq)
                 z = self.ae.reparameterize(z_mean, z_logvar)
                 pred.set_latent(z, z_mean, z_logvar)
         else:
-                z = self.ae.encode(rollout_batch)
+                z = self.ae.encode(input_seq)
                 pred.set_latent(z)
 
         # initial state
@@ -225,7 +231,7 @@ class PixelHNN(PixelDDN):
             # compute next state
             q, p = self.integrator.step(x1=q, x2=p, ddn=self.ddn, hamiltonian=True)
             pred.append_state(x1=q, x2=p, hamiltonian=True)
-            pred.append_energy(self.integrator.energy)  # energy of the previous timestep
+            pred.append_energy(self.integrator.energy)
 
             # compute state reconstruction
             x_reconstructed = self.ae.decode(q)
@@ -246,30 +252,37 @@ class PixelHNN(PixelDDN):
 class PixelMLP(PixelDDN):
     """ Pixel Multilayer Perceptron Network """
 
-    def forward(self, rollout_batch, pred_steps=1, variational=True, convolutional=True):
-        """ sets forward pass and return prediction from pixel input """
+    def forward(self, input_seq, pred_steps=1, variational=True, convolutional=True):
+        """ sets forward pass and return prediction from pixel input using a Multilayer Perceptron Neural Network
+        Params:
+            input_seq (Tensor) [batch_size, seq_len, channels, height, width]: sequence of input images
+            pred_steps (int): number of timesteps to predict in the future
+            variational (bool): whether the autoencoder is variational
+            convolutional (bool): whether the autoencoder is convolutional
+        """
         # init prediction object
-        pred_shape = list(rollout_batch.shape)
+        pred_shape = list(input_seq.shape)
         # length of guessed sequence plus the first one
         pred_shape[1] = pred_steps + 1
         pred = ModelOutput(batch_shape=torch.Size(pred_shape))
-        pred.set_input(rollout_batch)
+        pred.set_input(input_seq)
 
         # concat along channel dimension
-        b, s, c, h, w = rollout_batch.size()
+        b, s, c, h, w = input_seq.size()
 
+        # reshape input to match autoencoder input layer
         if convolutional:
-            rollout_batch = rollout_batch.reshape(b, s * c, h, w)
+            input_seq = input_seq.reshape(b, s * c, h, w)
         else:
-            rollout_batch = rollout_batch.reshape(b, s * c * h * w)
+            input_seq = input_seq.reshape(b, s * c * h * w)
 
         # get and save latent distribution
         if variational:
-                z_mean, z_logvar = self.ae.encode(rollout_batch)
+                z_mean, z_logvar = self.ae.encode(input_seq)
                 z = self.ae.reparameterize(z_mean, z_logvar)
                 pred.set_latent(z, z_mean, z_logvar)
         else:
-                z = self.ae.encode(rollout_batch)
+                z = self.ae.encode(input_seq)
                 pred.set_latent(z)
 
         q = z[:, :int(self.latent_dim / 2)]
@@ -308,5 +321,3 @@ class PixelVIN(PixelDDN):
     def forward(self):
         """ sets forward pass and return prediction from pixel input """
         raise NotImplementedError
-
-

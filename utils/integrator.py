@@ -1,19 +1,24 @@
 import torch
 
+# class implementing the numerical integration using the Lagrangian Neural Network or Hamiltonian neural network
+# in order to compute future state parameters
+
+"""
+Methods:
+    Euler: Euler method integration
+    RK4: classical Runge-Kutta integration
+    Leapfrog: Leapfrog Integration
+"""
 
 class Integrator:
-    """ Integrator class for different integration methods
-    Methods:
-        Euler: Euler method integration
-        RK4: classical Runge-Kutta integration
-        Leapfrog: Leapfrog Integration
-    """
+    """ Integrator class for different integration methods """
+
     METHODS = ["Euler", "RK4", "Leapfrog"]
 
-    def __init__(self, delta_t=1 / 30, method="RK4"):
+    def __init__(self, delta_t, method="RK4"):
         """
-        delta_t (float): time difference between integration steps
-        method (str): integration method
+        delta_t (float): time step size between integration steps
+        method (string): integration method
         """
         # check for wrong methods
         if method not in self.METHODS:
@@ -26,67 +31,72 @@ class Integrator:
     def _get_gradients(self, x1, x2, ddn, remember_energy=False, hamiltonian=False):
         """ compute the gradients of the dynamic input parameters according to Hamiltonian or Lagrangian principles
         Params:
-            x1 (tensor): Latent-space position tensor
-            x2 (tensor): Latent-space velocity/momentum tensor
-            ddn (model): Deep Dynamic Network
+            x1 (Tensor): Latent-space position tensor
+            x2 (Tensor): Latent-space velocity/momentum tensor
+            ddn: Deep Dynamic Network
             hamiltonian (bool): Whether the x2 is momentum or velocity
-            remember_energy (bool): Wether the Hamiltonian/Lagrangian should be saved or not
+            remember_energy (bool): Whether the Hamiltonian/Lagrangian should be saved or not
         Returns:
             dq_dt (tensor): gradient of the position parameter
             dp_dt/dq_ddt (tensor): gradient of the momentum/velocity parameter
         """
 
+        # compute gradients for Hamiltonian formalism
         if hamiltonian:
-            # Compute energy of the system
-            energy = ddn(q=x1, p=x2)
+            # get hamiltonian of the system
+            ham = ddn(q=x1, p=x2)
 
             # dq_dt = dH/dp
-            dq_dt = torch.autograd.grad(energy,
+            dq_dt = torch.autograd.grad(ham,
                                         x1,
                                         create_graph=True,
                                         retain_graph=True,
-                                        grad_outputs=torch.ones_like(energy))[0]
+                                        grad_outputs=torch.ones_like(ham))[0]
 
             # dp_dt = -dH/dq
-            dp_dt = -torch.autograd.grad(energy,
+            dp_dt = -torch.autograd.grad(ham,
                                          x2,
                                          create_graph=True,
                                          retain_graph=True,
-                                         grad_outputs=torch.ones_like(energy))[0]
+                                         grad_outputs=torch.ones_like(ham))[0]
 
             # Returns a new Tensor, detached from the current graph
             if remember_energy:
-                self.energy = energy.detach().cpu().numpy()
+                self.energy = ham.detach().cpu().numpy()
 
             return dq_dt, dp_dt
 
         # lagrangian
         else:
             dq_dt = x2
+            # get acceleration
             dq_ddt = ddn(q=x1, qdot=x2)
 
+            # get lagrangian
             if remember_energy:
                 batch_size = x1.shape[0]
                 q_size = x1.shape[1]
-                energy = torch.empty(batch_size, q_size)
+                lag = torch.empty(batch_size, q_size)
 
                 for b in range(batch_size):
                     q_tmp = x1[b]
                     qdot_tmp = x2[b]
-                    energy[b] = ddn.lagrangian(q_tmp, qdot_tmp)
+                    lag[b] = ddn.lagrangian(q_tmp, qdot_tmp)
 
-                self.energy = energy.detach().cpu().numpy()
+                self.energy = lag.detach().cpu().numpy()
 
             return dq_dt, dq_ddt
 
     def _euler_step(self, x1, x2, ddn=None, hamiltonian=False):
         """ computes next state with the euler integration method
         Params:
-            x1: either position (hamiltonian) or velocity (lagrangian)
-            x2: either momentum (hamiltonian) or acceleration (lagrangian)
+            x1 (Tensor): either position (hamiltonian) or velocity (lagrangian)
+            x2 (Tensor): either momentum (hamiltonian) or acceleration (lagrangian)
+            ddn: deep dynamic network (lagrangian or hamiltonian)
+            hamiltonian (bool): whether dynamic network is hamiltonian or not
         Returns:
-            q_next (tensor): positon parameter of future state
-            p_next/qdot_next (tensor): momentum/velocity parameter of future state
+            q_next (Tensor): positon parameter of future state
+            p_next/qdot_next (Tensor): momentum/velocity parameter of future state
         """
         if hamiltonian:
             q = x1
@@ -106,16 +116,18 @@ class Integrator:
 
             q_next = q + self.delta_t * dq_dt
             qdot_next = qdot + self.delta_t * dq_ddt
-            return q_next, qdot_next
+            return q_next, qdot_next, dq_ddt
 
     def _rk4_step(self, x1, x2, ddn=None, hamiltonian=False):
         """ computes next state with the Classic Runge-Kutta integration method
         Params:
-            x1: either position (hamiltonian) or velocity (lagrangian)
-            x2: either momentum (hamiltonian) or acceleration (lagrangian)
+            x1 (Tensor): either position (hamiltonian) or velocity (lagrangian)
+            x2 (Tensor): either momentum (hamiltonian) or acceleration (lagrangian)
+            ddn: deep dynamic network (lagrangian or hamiltonian)
+            hamiltonian (bool): whether dynamic network is hamiltonian or not
         Returns:
-            q_next (tensor): positon parameter of future state
-            p_next/qdot_next (tensor): momentum/velocity parameter of future state
+            q_next (Tensor): positon parameter of future state
+            p_next/qdot_next (Tensor): momentum/velocity parameter of future state
         """
         if hamiltonian:
             q = x1
@@ -172,23 +184,25 @@ class Integrator:
             q_next = q + self.delta_t * ((k1_q / 6) + (k2_q / 3) + (k3_q / 3) + (k4_q / 6))
             qdot_next = qdot + self.delta_t * ((k1_qdot / 6) + (k2_qdot / 3) + (k3_qdot / 3) + (k4_qdot / 6))
 
-            return q_next, qdot_next
+            return q_next, qdot_next, k1_qdot
 
     def _leapfrog_step(self, x1, x2, ddn=None, hamiltonian=False):
         """ computes next state with the leapfrog integration method
         Params:
-            x1: either position (hamiltonian) or velocity (lagrangian)
-            x2: either momentum (hamiltonian) or acceleration (lagrangian)
+            x1 (Tensor): either position (hamiltonian) or velocity (lagrangian)
+            x2 (Tensor): either momentum (hamiltonian) or acceleration (lagrangian)
+            ddn: deep dynamic network (lagrangian or hamiltonian)
+            hamiltonian (bool): whether dynamic network is hamiltonian or not
         Returns:
-            q_next (tensor): positon parameter of future state
-            p_next/qdot_next (tensor): momentum/velocity parameter of future state
+            q_next (Tensor): positon parameter of future state
+            p_next/qdot_next (Tensor): momentum/velocity parameter of future state
         """
         if hamiltonian:
             q = x1
             p = x2
             _, dp_dt = self._get_gradients(q, p, ddn, remember_energy=True, hamiltonian=True)
 
-            # combination of two sympletic euler methods
+            # combination of two symplectic euler methods
             # SE1
             p_next_half = p + dp_dt * (self.delta_t/2)
             q_next_half = q + p_next_half * (self.delta_t/2)
@@ -206,7 +220,7 @@ class Integrator:
             qdot = x2
             _, dq_ddt = self._get_gradients(q, qdot, ddn, remember_energy=True, hamiltonian=False)
 
-            # combination of two sympletic euler methods
+            # combination of two symplectic euler methods
             # SE1
             qdot_next_half = qdot + dq_ddt * (self.delta_t/2)
             q_next_half = q + qdot_next_half * (self.delta_t/2)
@@ -216,17 +230,18 @@ class Integrator:
             _, dq_next_ddt = self._get_gradients(q_next, qdot_next_half, ddn, hamiltonian=False)
             qdot_next = qdot_next_half + dq_next_ddt * (self.delta_t/2)
 
-            return q_next, qdot_next
+            return q_next, qdot_next, dq_ddt
 
     def step(self, x1, x2, ddn, hamiltonian=False):
-        """ performs integration for one time step
+        """ performs integration for one time step using the specified integration method
         Params:
-            x1 (tensor): Latent-space position tensor
-            x2 (tensor): Latent-space velocity/momentum tensor
-            ddn (model): Deep Dynamic Network
-            hamiltonian (bool): Whether the x2 is momentum or velocity
+            x1 (Tensor): either position (hamiltonian) or velocity (lagrangian)
+            x2 (Tensor): either momentum (hamiltonian) or acceleration (lagrangian)
+            ddn: deep dynamic network (lagrangian or hamiltonian)
+            hamiltonian (bool): whether dynamic network is hamiltonian or not
         Returns:
-            tuple(tensor, tensor): Position and velocity/momentum for one time step in the future
+            q_next (Tensor): positon parameter of future state
+            p_next/qdot_next (Tensor): momentum/velocity parameter of future state
         """
 
         if self.method == "Euler":

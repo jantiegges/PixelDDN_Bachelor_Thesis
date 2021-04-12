@@ -2,23 +2,21 @@ import torch
 import yaml
 import numpy as np
 
+# class containing different helper functions needed in the process
 
 def choose_activation(name):
-    ''' returns torch activation regarding to desired one
-    Params
+    """ returns torch activation function corresponding to the desired one
+    Params:
         name (str): name of activation
-    Return:
+    Returns:
         act: torch activation
-    '''
-    act = None
+    """
     if name == 'tanh':
         act = torch.tanh
     elif name == 'relu':
         act = torch.relu
     elif name == 'relu^2':
     	act = lambda x: torch.relu(torch.pow(x, 2))
-    elif name == 'relu^3':
-        act = lambda x: torch.relu(torch.pow(x, 3))
     elif name == 'sigmoid':
         act = torch.sigmoid
     elif name == 'softplus':
@@ -27,28 +25,31 @@ def choose_activation(name):
         act = torch.nn.functional.selu
     elif name == 'elu':
         act = torch.nn.functional.elu
+    elif name == 'gelu':
+        act = torch.nn.functional.gelu
     elif name == 'swish':
         act = lambda x: x * torch.sigmoid(x)
     else:
         raise ValueError("Did not find activation function")
     return act
 
-
 def read_config(config_file):
-    ''' reads a config file
+    """ reads a config file and returns as dictionary
     Params:
         config_file (str): path to config file
-    '''
+    Returns:
+        config (dict): config file as dictionary
+    """
     with open(config_file, 'r') as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
     return config
 
 def convert_data(data):
-    """ constructs trainset and testset from data
+    """ constructs training set and test set from data
     Params:
         data (dict): dictionary containing all data
     Returns:
-        trainset,testset (tensor
+        trainset, testset: corresponding training set and test set
     """
     trainset = data['train_data']
     testset = data['test_data']
@@ -64,5 +65,3 @@ def convert_data(data):
     testset = testset.permute(0, 1, 4, 2, 3)
 
     return trainset, testset
-
-
