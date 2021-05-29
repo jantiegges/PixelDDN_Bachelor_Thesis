@@ -65,18 +65,23 @@ autoencoder:
 #   gelu
 #   swish
 
+# integrator options:
+#   Euler
+#   RK4
+#   Leapfrog
+
 dynamics:
   MLP:
     hidden_layers: 2
-    activation: "relu"
+    activation: "relu" # relu used in final model
   LNN:
     hidden_layers: 2
     # only activation function which have a nonzero second derivative can be used (not relu)
-    activation: "softplus"
+    activation: "relu^2" # relu^2 is meh
     integrator: "Leapfrog"
   HNN:
     hidden_layers: 2
-    activation: "relu"
-    integrator: "Leapfrog"
+    activation: "relu" # relu used in final model
+    integrator: "Euler"
   VIN:
     implemented: "no"

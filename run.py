@@ -79,7 +79,7 @@ class PixelDDNTrainer:
         self.trainloader = torch.utils.data.DataLoader(self.trainset, shuffle=True,
                                                   batch_size=self.train_params['batch_size'])
 
-        self.testloader = torch.utils.data.DataLoader(self.trainset, shuffle=True,
+        self.testloader = torch.utils.data.DataLoader(self.testset, shuffle=True,
                                                   batch_size=self.train_params['batch_size'])
 
         # specify path for tensorboard writer
@@ -87,20 +87,23 @@ class PixelDDNTrainer:
         self.writer = SummaryWriter(RUN_DIR)
 
         # init optimizer
-        optim_params = [
-            {
-                'params': list(self.model.ae.parameters()),
-                'lr': self.train_params["ae_lr"]#, 
-                #'weight_decay': self.train_params["ae_wd"]
-            },
-            {
-                'params': list(self.model.ddn.parameters()),
-                'lr': self.train_params["ddn_lr"]#,
-                #'weight_decay': self.train_params["ddn_wd"]
-            },
-        ]
 
-        self.optimizer = torch.optim.Adam(optim_params)
+        # separate specification of learning rates for ae and ddn poses problems in optimisation
+        # optim_params = [
+        #     {
+        #         'params': list(self.model.ae.parameters()),
+        #         'lr': self.train_params["ae_lr"]#,
+        #         #'weight_decay': self.train_params["ae_wd"]
+        #     },
+        #     {
+        #         'params': list(self.model.ddn.parameters()),
+        #         'lr': self.train_params["ddn_lr"]#,
+        #         #'weight_decay': self.train_params["ddn_wd"]
+        #     },
+        # ]
+        #self.optimizer = torch.optim.Adam(optim_params)
+
+        self.optimizer = torch.optim.Adam(list(self.model.parameters()), self.train_params["lr"])
 
         self.train_log = []
         self.test_log = []
@@ -157,9 +160,12 @@ class PixelDDNTrainer:
                 kld_loss = -0.5 * torch.sum(1 + pred.z_logvar - pred.z_mean.pow(2) - pred.z_logvar.exp())
 
                 if self.loss_type == 'beta_sum':
-                    # normalise
-                    #kld_loss = kld_loss / data_size
                     loss = reconstruction_error + (self.beta * kld_loss)
+
+                    # below lines work
+                    # beta_norm = (self.beta * args.latent_dim) / data_size
+                    # kld_loss = kld_loss * beta_norm
+                    # loss = reconstruction_error + kld_loss
                 elif self.loss_type == 'geco_sum':
                     # compute geco contraint
                     geco_constraint = reconstruction_error - self.tol**2
@@ -172,7 +178,6 @@ class PixelDDNTrainer:
                         else:
                             self.gc_ma = self.alpha * self.gc_ma + (1 - self.alpha) * geco_constraint
                 elif self.loss_type == 'normal_sum':
-                    #kld_loss = kld_loss / data_size
                     loss = reconstruction_error + kld_loss
                 else:
                     raise NotImplementedError
@@ -180,8 +185,12 @@ class PixelDDNTrainer:
             return {'Total Loss': loss, 'Reconstruction Loss': reconstruction_error, 'KLD': kld_loss}
 
         else:
-            loss = torch.nn.functional.mse_loss(input=pred.reconstruction, target=target)
-            return {'Total Loss': loss}
+            if self.loss_type == 'sum':
+                loss = torch.nn.functional.mse_loss(input=pred.reconstruction, target=target, reduction='sum')
+            elif self.loss_type == 'mean':
+                loss = torch.nn.functional.mse_loss(input=pred.reconstruction, target=target)
+
+            return {'Total Loss': loss, 'Reconstruction Loss': loss}
 
     def fit(self):
         """ implements whole training process for the model """
@@ -238,7 +247,7 @@ class PixelDDNTrainer:
                 self.optimizer.step()
 
                 # every 100 steps update lambda and log loss
-                if i % 100 == 99:
+                if i % 50 == 49:
 
                     if 'geco' in self.loss_type and self.var:
                         # update lambda
@@ -248,12 +257,18 @@ class PixelDDNTrainer:
                         # cast lambda back to float
                         self.lambd = self.lambd.item()
 
-                    # normalise loss for logging for variational autoencoder with sum reduction
+                    # normalise loss for logging for autoencoder with sum reduction
                     if 'sum' in self.loss_type:
                         normaliser = target.flatten().shape[0]
-                        losses['Reconstruction Loss'] = losses['Reconstruction Loss'] / normaliser
-                        losses['KLD'] = losses['KLD'] / target.shape[0]
-                        losses['Total Loss'] = losses['KLD'] + losses['Reconstruction Loss']
+                        if self.var:
+                            losses['Reconstruction Loss'] = losses['Reconstruction Loss'] / normaliser
+                            #losses['KLD'] = losses['KLD'] / target.shape[0]
+                            losses['KLD'] = losses['KLD'] / normaliser
+                            losses['Total Loss'] = losses['KLD'] + losses['Reconstruction Loss']
+                        else:
+                            losses['Reconstruction Loss'] = losses['Reconstruction Loss'] / normaliser
+                            #losses['KLD'] = losses['KLD'] / target.shape[0]
+                            losses['Total Loss'] = losses['Reconstruction Loss']
 
                     # append train loss
                     self.train_log.append(losses)
@@ -302,6 +317,8 @@ class PixelDDNTrainer:
             PATH: path of model to test
         """
         # load saved model parameters
+        if PATH == "None":
+        	PATH = f"{MODEL_DIR}/{self.ddn_model}_{self.ae_model}/{self.ddn_model}_{self.ae_model}"
         self.model.load_state_dict(torch.load(PATH))
 
         # set random seed
@@ -309,7 +326,7 @@ class PixelDDNTrainer:
         np.random.seed(args.seed)
 
         # print statement on console
-        print(f"\nSuccesfully loaded {self.ddn_model} model with {self.ae_model} from {PATH}")
+        print(f"\nSuccessfully loaded {self.ddn_model} model with {self.ae_model} from {PATH}")
         print(f"\nTesting...")
 
         seq_len = self.data['settings']['seq_len']
@@ -338,14 +355,20 @@ class PixelDDNTrainer:
             # compute losses
             losses = self.compute_loss(prediction, target)
 
-            if i % 100 == 99:
+            if i % 50 == 49:
 
-                # normalise loss for logging for variational autoencoder with sum reduction
+                # normalise loss for logging for autoencoder with sum reduction
                 if 'sum' in self.loss_type:
                     normaliser = target.flatten().shape[0]
-                    losses['Reconstruction Loss'] = losses['Reconstruction Loss'] / normaliser
-                    losses['KLD'] = losses['KLD'] / target.shape[0]
-                    losses['Total Loss'] = losses['KLD'] + losses['Reconstruction Loss']
+                    if self.var:
+                        losses['Reconstruction Loss'] = losses['Reconstruction Loss'] / normaliser
+                        #losses['KLD'] = losses['KLD'] / target.shape[0]
+                        losses['KLD'] = losses['KLD'] / normaliser
+                        losses['Total Loss'] = losses['KLD'] + losses['Reconstruction Loss']
+                    else:
+                        losses['Reconstruction Loss'] = losses['Reconstruction Loss'] / normaliser
+                        #losses['KLD'] = losses['KLD'] / target.shape[0]
+                        losses['Total Loss'] = losses['Reconstruction Loss']
 
                 self.test_log.append(losses)
 
@@ -378,7 +401,7 @@ def get_args():
     parser.add_argument("--latent_dim", default=2, type=int, help="dimension of the latent space")
     parser.add_argument("--data_file", default="not_given", type=str, help="file name of dataset")
     parser.add_argument("--model_file", default="None", type=str, help="file name of trained model to load")
-    parser.add_argument("--train_flag", default=True, type=bool, help="bool whether model should be trained or not")
+    parser.add_argument("--train_flag", default="True", type=str, help="bool whether model should be trained or not")
     parser.add_argument("--seed", default=32, type=int, help="random seed")
     parser.set_defaults(feature=True)
     return parser.parse_args()
@@ -417,7 +440,7 @@ if __name__ == "__main__":
     trainer = PixelDDNTrainer(ae_model, ddn_model, ae_config, ddn_config, train_config, data_config, args)
 
     # trains and tests or just tests the model
-    if args.train_flag:
+    if args.train_flag == "True":
         trainer.fit()
     else:
-        trainer.test()
+        trainer.test(args.model_file)

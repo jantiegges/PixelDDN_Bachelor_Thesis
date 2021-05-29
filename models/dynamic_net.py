@@ -87,8 +87,11 @@ class LNN(DDN):
             lag (Tensor) [1]: scalar value representing the Lagrangian
         """
         # concatenate state parameters
+        # z = torch.cat(
+        #     (q, qdot), dim=1)
+
         z = torch.cat(
-            (q, qdot))
+             (q, qdot))
 
         x = self.activation(self.input(z))
 
@@ -135,8 +138,8 @@ class LNN(DDN):
             qdot_tmp = qdot[b]
 
             # compute hessian an and jacobian of Lagrange Function with respect to input
-            hess = tgrad.functional.hessian(self.lagrangian, (q_tmp, qdot_tmp), create_graph=True)
-            jac = tgrad.functional.jacobian(self.lagrangian, (q_tmp, qdot_tmp), create_graph=True)
+            hess = tgrad.functional.hessian(self.lagrangian, (q_tmp, qdot_tmp), create_graph=False)
+            jac = tgrad.functional.jacobian(self.lagrangian, (q_tmp, qdot_tmp), create_graph=False)
 
             # calculating the acceleration according to a transformed Euler-Lagrange Equation
             hess_qdot = hess[1][1]
@@ -147,6 +150,23 @@ class LNN(DDN):
             third_term = torch.matmul(hess_qqdot, qdot_tmp.unsqueeze(-1))
             brackets = torch.sub(grad_q, third_term)
             dq_ddt[b] = (torch.matmul(hess_inv, brackets)).squeeze(1)
+
+        # lag = self.lagrangian(q, qdot)
+        #
+        # grad_qdot = torch.autograd.grad(lag, qdot, create_graph=True, retain_graph=True,
+        #                                 grad_outputs=torch.ones_like(lag))[0]
+        # hess_qdot = torch.autograd.grad(grad_qdot, qdot, create_graph=True, retain_graph=True,
+        #                                 grad_outputs=torch.ones_like(lag))[0]
+        #
+        # grad_q = torch.autograd.grad(lag, q, create_graph=True, retain_graph=True,
+        #                              grad_outputs=torch.ones_like(lag))[0]
+        # hess_qqdot = torch.autograd.grad(grad_q, qdot, create_graph=True, retain_graph=True,
+        #                                  grad_outputs=torch.ones_like(lag))[0]
+        #
+        # hess_inv = torch.linalg.pinv(hess_qdot).permute(1,0)
+        # third_term = torch.mul(hess_qqdot, qdot)
+        # brackets = torch.sub(grad_q, third_term)
+        # dq_ddt = torch.mul(hess_inv, brackets)
 
         return dq_ddt
 

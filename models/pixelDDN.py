@@ -25,6 +25,7 @@ class PixelDDN(torch.nn.Module):
         super().__init__()
         self.ae_model = ae_model
         self.ddn_model = ddn_model
+        self.ae_params = ae_params
         self.en_params = ae_params['encoder']
         self.de_params = ae_params['decoder']
         self.ddn_params = ddn_params
@@ -170,6 +171,9 @@ class PixelLNN(PixelDDN):
 
             last_energy = last_energy_tmp.detach().cpu().numpy()
 
+        # with torch.no_grad():
+        #     last_energy = self.ddn.lagrangian(q, qdot).detach().cpu().numpy()
+        #
         last_qddot = self.ddn(q, qdot)
         pred.append_energy(last_energy)
         pred.append_acc(last_qddot)
@@ -180,7 +184,7 @@ class PixelLNN(PixelDDN):
 class PixelHNN(PixelDDN):
     """ Pixel Hamiltonian Neural Network """
 
-    def forward(self, input_seq, pred_steps=1, variational=True, convolutional=True):
+    def forward(self, input_seq, pred_steps, variational=True, convolutional=True):
         """ sets forward pass and return prediction from pixel input using a Hamiltonian Neural Network
         Params:
             input_seq (Tensor) [batch_size, seq_len, channels, height, width]: sequence of input images

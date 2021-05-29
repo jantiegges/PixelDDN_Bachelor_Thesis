@@ -48,14 +48,14 @@ class Integrator:
 
             # dq_dt = dH/dp
             dq_dt = torch.autograd.grad(ham,
-                                        x1,
+                                        x2,
                                         create_graph=True,
                                         retain_graph=True,
                                         grad_outputs=torch.ones_like(ham))[0]
 
             # dp_dt = -dH/dq
             dp_dt = -torch.autograd.grad(ham,
-                                         x2,
+                                         x1,
                                          create_graph=True,
                                          retain_graph=True,
                                          grad_outputs=torch.ones_like(ham))[0]
@@ -84,6 +84,11 @@ class Integrator:
                     lag[b] = ddn.lagrangian(q_tmp, qdot_tmp)
 
                 self.energy = lag.detach().cpu().numpy()
+
+            # Returns a new Tensor, detached from the current graph
+            # if remember_energy:
+            # 	lag = ddn.lagrangian(q=x1, qdot=x2)
+            # 	self.energy = lag.detach().cpu().numpy()
 
             return dq_dt, dq_ddt
 

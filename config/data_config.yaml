@@ -10,10 +10,11 @@ system: "pendulum"
 latent_dim: 2
 
 # size of timestep between each rendered image (given from OpenAI Gym environment)
-# pendulum: 1/30 ~ 0.0333
-# double_pendulum: 1/15 ~ 0.0666
-# cartpole: 1/50 ~ 0.02
-delta_time: 1/30
+# pendulum: 0.05 (https://github.com/openai/gym/blob/master/gym/envs/classic_control/pendulum.py)
+# double_pendulum: 1/15 ~ 0.0666 (https://github.com/openai/gym/blob/master/gym/envs/classic_control/acrobot.py)
+# cartpole: 1/50 ~ 0.02 (https://github.com/openai/gym/blob/master/gym/envs/classic_control/pendulum.py)
+delta_time: 0.05
+# was 0.05 for model that worked?
 
 # how many times the environment should be running
 episodes: 1000

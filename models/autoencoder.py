@@ -360,7 +360,7 @@ class VAE(AE):
         self.decoder.extend([tnn.Linear(hid_features[h], hid_features[h+1]) for h in range(hidden_layers)])
 
         # output layer
-        self.output = tnn.Linear(hid_features[-1], out_features)
+        self.decoder.append(tnn.Linear(hid_features[-1], out_features))
 
     def encode(self, x):
         """
@@ -542,7 +542,7 @@ class CVAE(AE):
                                        out_channels=self.channels,
                                        kernel_size=kernel_sizes[-1],
                                        padding=paddings[-1]),
-                            tnn.Sigmoid())
+                            tnn.Tanh())
 
     def encode(self, x):
         """ Encodes a sequence of images to mean and variance

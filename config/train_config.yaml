@@ -15,13 +15,16 @@ activation: "relu"
 epochs: 3
 batch_size: 16
 
-# type of loss calculation (only matters for Variational Autoencoder)
-# options:
+# type of loss calculation
+# options for VAE & CVAE:
 #   normal: normale ELBO
 #   beta: https://openreview.net/references/pdf?id=Sy2fzU9gl
 #   geco: https://arxiv.org/pdf/1810.00597.pdf
+#   additionally one has to choose between mean and sum reduction (example: geco_mean)
 #
-# additionally one has to choose between mean and sum reduction (example: geco_mean)
+# options for LAE & CAE:s
+#   sum: sum reduction
+#   mean: mean reduction
 loss_type: 'geco_mean'
 beta: 2
 
@@ -33,6 +36,7 @@ alpha: 0.99
 # Learning rates
 ae_lr: 1.5e-4
 ddn_lr: 1.5e-4
+lr: 1.5e-4
 
 # Weigth decay
 # not used in final model

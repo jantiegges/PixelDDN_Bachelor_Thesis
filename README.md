@@ -3,7 +3,7 @@ Jan Tiegges
 
 Abstract too follow...
 
-- maybe put in reference file
+- maybe put in references at the end
 - for the Pixel Hamiltonian Neural Network as comparison the papers HGN and HNN have been used for construction of the network
 
 ## Project Structure
@@ -30,13 +30,29 @@ Abstract too follow...
 
 ## Setup
 
-pip install -r requirements.txt`
+pip install -r requirements.txt
 
 ## How to run the model
-[run.py](run.py) Training as well as testing the models 
+[run.py](run.py): Training as well as testing the models 
 In order to train the model, run
 ```commandline
 python run.py --ae_model <name_of_autoencoder> --ddn_model <name_of_dynamic_network>
+```
+
+Autoencoder options:
+- Linear Autoencoder (LAE)
+- Convolutional Autoencoder (CAE)
+- Variational Autoencoder (VAE)
+- Convolutional Variational Autoencoder (CVAE)
+
+Dynamic Network options:
+- Simple Fully-Connected Network (MLP)
+- Lagrangian Neural Network (LNN)
+- Hamitlonian Neural Network (HNN)
+
+example:
+```commandline
+python run.py --ae_model CVAE --ddn_model LNN
 ```
 
 All parameters to vary for the data set, the model structure and the training are to be specified in the corresponding configuration file before running the script.
