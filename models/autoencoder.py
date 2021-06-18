@@ -418,18 +418,6 @@ class VAE(AE):
         return x_hat
 
 
-"""
-Code adapted from:
-    - @article{toth2019hamiltonian,
-      title={Hamiltonian generative networks},
-      author={Toth, Peter and Rezende, Danilo Jimenez and Jaegle, Andrew and Racani{\`e}re, S{\'e}bastien and Botev, Aleksandar and Higgins, Irina},
-      journal={arXiv preprint arXiv:1909.13789},
-      year={2019}
-    }
-    - https://www.tensorflow.org/tutorials/generative/cvae
-    - https://github.com/AntixK/PyTorch-VAE/blob/master/models/beta_vae.py
-"""
-
 class CVAE(AE):
     """ Convolutional Variational Autoencoder """
 

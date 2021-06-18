@@ -87,6 +87,7 @@ class LNN(DDN):
             lag (Tensor) [1]: scalar value representing the Lagrangian
         """
         # concatenate state parameters
+        # alternative when going to whole batch at once
         # z = torch.cat(
         #     (q, qdot), dim=1)
 
@@ -151,6 +152,7 @@ class LNN(DDN):
             brackets = torch.sub(grad_q, third_term)
             dq_ddt[b] = (torch.matmul(hess_inv, brackets)).squeeze(1)
 
+        # alternative that does not rely on autograd.functional package
         # lag = self.lagrangian(q, qdot)
         #
         # grad_qdot = torch.autograd.grad(lag, qdot, create_graph=True, retain_graph=True,
@@ -218,13 +220,5 @@ class HNN(DDN):
 class VIN(DDN):
     """ Variational Integrator Network """
     # TODO: implement Variational Integrator Network for comparison
-    # @inproceedings{saemundsson2020variational,
-    #   title={Variational integrator networks for physically structured embeddings},
-    #   author={Saemundsson, Steindor and Terenin, Alexander and Hofmann, Katja and Deisenroth, Marc},
-    #   booktitle={International Conference on Artificial Intelligence and Statistics},
-    #   pages={3078--3087},
-    #   year={2020},
-    #   organization={PMLR}
-    # }
     def _build_network(self):
         raise NotImplementedError

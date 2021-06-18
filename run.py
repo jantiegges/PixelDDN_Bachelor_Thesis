@@ -87,22 +87,6 @@ class PixelDDNTrainer:
         self.writer = SummaryWriter(RUN_DIR)
 
         # init optimizer
-
-        # separate specification of learning rates for ae and ddn poses problems in optimisation
-        # optim_params = [
-        #     {
-        #         'params': list(self.model.ae.parameters()),
-        #         'lr': self.train_params["ae_lr"]#,
-        #         #'weight_decay': self.train_params["ae_wd"]
-        #     },
-        #     {
-        #         'params': list(self.model.ddn.parameters()),
-        #         'lr': self.train_params["ddn_lr"]#,
-        #         #'weight_decay': self.train_params["ddn_wd"]
-        #     },
-        # ]
-        #self.optimizer = torch.optim.Adam(optim_params)
-
         self.optimizer = torch.optim.Adam(list(self.model.parameters()), self.train_params["lr"])
 
         self.train_log = []
@@ -161,11 +145,6 @@ class PixelDDNTrainer:
 
                 if self.loss_type == 'beta_sum':
                     loss = reconstruction_error + (self.beta * kld_loss)
-
-                    # below lines work
-                    # beta_norm = (self.beta * args.latent_dim) / data_size
-                    # kld_loss = kld_loss * beta_norm
-                    # loss = reconstruction_error + kld_loss
                 elif self.loss_type == 'geco_sum':
                     # compute geco contraint
                     geco_constraint = reconstruction_error - self.tol**2

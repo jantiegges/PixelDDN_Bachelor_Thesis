@@ -77,11 +77,11 @@ dynamics:
   LNN:
     hidden_layers: 2
     # only activation function which have a nonzero second derivative can be used (not relu)
-    activation: "relu^2" # relu^2 is meh
+    activation: "relu^2"
     integrator: "Leapfrog"
   HNN:
     hidden_layers: 2
-    activation: "relu" # relu used in final model
+    activation: "relu"
     integrator: "Euler"
   VIN:
     implemented: "no"

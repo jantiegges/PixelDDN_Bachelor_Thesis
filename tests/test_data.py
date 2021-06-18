@@ -67,8 +67,3 @@ if __name__ == '__main__':
         dummy = 1
 
     seq_len = data['settings']
-
-    dummy = 1
-
-
-

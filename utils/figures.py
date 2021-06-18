@@ -23,7 +23,6 @@ def make_gif(frames, save_dir, name, duration=1e-1, pixels=None):
     images = []
     for i in range(len(frames)):
         im = np.asarray((frames[i].clip(-.5,.5) + .5)*255)
-        #im = np.asarray(frames[i]*255)
         im = im.astype(np.uint8)
         im = Image.fromarray(im, mode="L")
         if pixels is not None:
